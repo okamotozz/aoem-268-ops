@@ -1,305 +1,134 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>268官職排程表</title>
-  <style>
-    body { font-family:"Microsoft JhengHei", sans-serif; background:#f6f6fa; padding:20px; }
-    .wrap { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.1); }
-    .slot { background:#f0f3ff; border-radius:8px; padding:10px; margin:6px; display:flex; justify-content: space-between; align-items:center; cursor:pointer; }
-    .slot.taken { background:#ffe5e5; color:#666; }
-    input,button,select { padding:8px; margin:4px; }
-    .admin-btn { background:#ffcccc; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; margin-left:4px; }
-  </style>
+<meta charset="UTF-8">
+<title>排班表</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  .wrap { max-width: 800px; margin: auto; }
+  .timeslot { padding: 8px; border: 1px solid #ccc; margin: 4px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .timeslot.used { background-color: #e0e0e0; }
+  #announcement { background:#fff3c6; padding:10px; border-radius:6px; margin-bottom:10px; cursor:default; }
+</style>
 </head>
 <body>
 <div class="wrap">
-  <h2>268官職排程表</h2>
 
+  <!-- 公告區 -->
+  <div id="announcement">歡迎使用排班表</div>
 
-  <div id="announcement" style="background:#fff3c6; padding:10px; border-radius:6px; margin-bottom:10px; cursor:default;">
-  歡迎使用排班表，公告文字
-</div>
-
-
-
-  <!-- 使用者輸入名字與密碼 -->
-  <div>
-    <input id="name" placeholder="請輸入你的遊戲名稱">
-  </div>
-  <div>
-    <input id="password" placeholder="可選擇設定密碼保護此時段" type="password">
-  </div>
-  <button id="refresh">確認遊戲名稱</button>
-
-  <!-- 選擇日期 -->
-  <select id="dateSelect"></select>
+  <!-- 名字輸入 -->
+  <input type="text" id="username" placeholder="輸入名字">
+  <input type="text" id="password" placeholder="密碼（選填）">
+  <button id="submitBtn">確認選擇</button>
 
   <!-- 時段列表 -->
-  <div id="slots"></div>
+  <div id="timeslots"></div>
 
-  <!-- 管理員區 -->
-  <div id="admin" style="margin-top:20px; background:#fff6e0; padding:10px; border-radius:8px;">
-    <h3>管理員專區</h3>
-    <input id="day" type="date">
-    <input id="start" type="number" placeholder="開始小時 (0-23)">
-    <input id="end" type="number" placeholder="結束小時 (1-24)">
-    <button id="make">建立時段</button>
-  </div>
+  <!-- 管理員模式示範 -->
+  <a href="?admin=123">管理員模式</a>
+
 </div>
 
-</div> <!-- wrap 結束 -->
-
+<!-- 常駐文字 -->
 <div style="text-align:center; margin-top:20px; font-size:12px; color:#888;">
-  網頁作者：DarkIrene
+  網頁表單製作者：DarkIrene
 </div>
-
-</body>
-</html>
-
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-/************ 在這裡貼你的 Firebase 設定 ************/
+// ====== Firebase 初始化 ======
 const firebaseConfig = {
-  apiKey: "AIzaSyBqUOjnXN-bp7OXJoQevS9-c0pnZxRU_B0",
-  authDomain: "test-d07d4.firebaseapp.com",
-  databaseURL: "https://test-d07d4-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "test-d07d4",
-  storageBucket: "test-d07d4.firebasestorage.app",
-  messagingSenderId: "442419315645",
+  apiKey: "你的APIKEY",
+  authDomain: "你的DOMAIN",
+  databaseURL: "你的DBURL",
+  projectId: "你的PROJECTID",
+  storageBucket: "你的BUCKET",
+  messagingSenderId: "你的SENDERID",
+  appId: "你的APPID"
 };
-/****************************************************/
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// 管理員 ID
-const params = new URLSearchParams(location.search);
-const isAdmin = params.get("admin") === "268admin"; // 可改成你自己的管理員 ID
-document.getElementById("admin").style.display = isAdmin ? "block" : "none";
+// ====== 變數 ======
+const urlParams = new URLSearchParams(window.location.search);
+const isAdmin = urlParams.get("admin") === "123"; // 管理員密碼示範
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
+const submitBtn = document.getElementById("submitBtn");
+const timeslotsDiv = document.getElementById("timeslots");
+const announcementDiv = document.getElementById("announcement");
 
-async function loadDates(){
-  const snap = await db.ref("slots").once("value");
-  const data = snap.val()||{};
-  const dates = [...new Set(Object.values(data).map(d=>d.date))];
-  const sel = document.getElementById("dateSelect");
-  sel.innerHTML = dates.map(d=>`<option>${d}</option>`).join("");
-  if (dates[0]) loadSlots(dates[0]);
-  sel.onchange = ()=>loadSlots(sel.value);
-}
-
-async function loadSlots(date){
-  const nameInput = document.getElementById("name").value.trim();
-  const pwdInput = document.getElementById("password").value.trim();
-  const snap = await db.ref("slots").orderByChild("date").equalTo(date).once("value");
-  const data = snap.val()||{};
-  const area = document.getElementById("slots");
-  area.innerHTML = "";
-
-  Object.keys(data).sort((a,b)=>data[a].hour-data[b].hour).forEach(id=>{
-    const s = data[id];
-    const div = document.createElement("div");
-    div.className = "slot"+(s.name?" taken":"");
-
-    // 時段文字
-    const span = document.createElement("span");
-    span.innerText = `${s.hour}:00-${s.hour+1}:00 ` + (s.name?`→ ${s.name}`:"(空)");
-    div.appendChild(span);
-
-    // 使用者點選預約
-    span.onclick = async () => {
-      const name = document.getElementById("name").value.trim();
-      const pwdInput = document.getElementById("password").value.trim();
-      if(!name) return alert("請先輸入遊戲名稱");
-
-      // 限制 1：管理員已勾選「已安排」不能選
-      if(s.done) return alert("此時段已被管理員標記為已安排，無法更改");
-
-      // 限制 2：時段已過，不能選
-      const now = new Date();
-      const slotDate = new Date(s.date);
-      slotDate.setHours(s.hour,0,0,0);
-      if(now >= slotDate) return alert("此時段已過，無法選擇");
-
-      // 密碼保護判斷
-      if(s.name){ // 若已有使用者登記
-        if(s.name !== name){ // 名字不同
-          if(s.password){ // 已設定密碼
-            if(pwdInput !== s.password) return alert("密碼錯誤，無法修改他人的時段");
-          } else {
-            return alert("此時段已被其他使用者登記，無法修改");
-          }
-        } else { // 名字相同
-          if(s.password && pwdInput !== s.password){
-            return alert("密碼錯誤，無法修改自己的時段");
-          }
-        }
-      }
-
-      // 通過檢查，更新名字與密碼
-      let updates = {};
-if(s.name === name){ 
-    // 使用者點自己名字取消 → 清空名字與密碼
-    updates = {name: "", password: ""};
-} else {
-    // 登記或修改密碼
-    updates = {name: name, password: pwdInput};
-}
-await db.ref("slots/"+id).update(updates);
-
-      loadSlots(date);
-    };
-
-    // 管理員功能
-    if(isAdmin){
-      // 刪除時段
-      const delBtn = document.createElement("button");
-      delBtn.className = "admin-btn";
-      delBtn.innerText = "刪除時段";
-      delBtn.onclick = async (e)=>{
-        e.stopPropagation();
-        if(!confirm(`確定刪除 ${s.hour}:00-${s.hour+1}:00 的時段嗎？`)) return;
-        await db.ref("slots/"+id).remove();
-        loadSlots(date);
-      };
-      div.appendChild(delBtn);
-
-      // 編輯 / 清空名字
-      if(s.name){
-        const editBtn = document.createElement("button");
-editBtn.className = "admin-btn";
-editBtn.innerText = "編輯名字";
-editBtn.onclick = async (e)=>{
-  e.stopPropagation();
-  const newName = prompt("修改名字（清空請留空）", s.name);
-  if(newName !== null){
-    // 如果清空名字，同時清空密碼
-    const updates = {name: newName.trim()};
-    if(newName.trim() === "") updates.password = "";
-    await db.ref("slots/"+id).update(updates);
-    loadSlots(date);
+// ====== 公告功能 ======
+// 讀取公告
+db.ref("announcement").on("value", snap => {
+  announcementDiv.innerText = snap.val() || "歡迎使用排班表";
+});
+// 管理員編輯公告
+if (isAdmin){
+  announcementDiv.style.cursor = "pointer";
+  announcementDiv.title = "點擊編輯公告";
+  announcementDiv.onclick = async () => {
+    const newText = prompt("請輸入新的公告文字：", announcementDiv.innerText);
+    if(newText!==null){
+      await db.ref("announcement").set(newText);
+    }
   }
-};
+}
 
-        div.appendChild(editBtn);
+// ====== 範例時段列表 ======
+const times = ["09:00-10:00","10:00-11:00","11:00-12:00","13:00-14:00","14:00-15:00"];
+// 顯示時段
+function renderTimeslots(){
+  timeslotsDiv.innerHTML = "";
+  db.ref("timeslots").once("value").then(snapshot=>{
+    const data = snapshot.val() || {};
+    times.forEach(t=>{
+      const slotDiv = document.createElement("div");
+      slotDiv.className="timeslot";
+      slotDiv.innerHTML = `<span>${t}</span>`;
+      
+      let btn = document.createElement("button");
+      const now = new Date();
+      const hour = parseInt(t.split(":")[0]);
+      const slotDate = new Date(); slotDate.setHours(hour,0,0,0);
+      const expired = now>slotDate; // 判斷時段過期
+
+      if(data[t] && data[t].username){
+        slotDiv.classList.add("used");
+        slotDiv.innerHTML+=` <span>${data[t].username}</span>`;
+        if(isAdmin){
+          btn.textContent="刪除使用者";
+          btn.onclick=()=>{ db.ref(`timeslots/${t}`).set({}); }
+          slotDiv.appendChild(btn);
+        }
+      }else if(!expired){
+        btn.textContent="選擇";
+        btn.onclick = ()=>{
+          const name = usernameInput.value.trim();
+          const pwd = passwordInput.value.trim();
+          if(!name){ alert("請輸入名字"); return; }
+          db.ref(`timeslots/${t}`).get().then(snap=>{
+            const slot = snap.val()||{};
+            if(slot.username && !isAdmin){ alert("已被安排"); return; }
+            db.ref(`timeslots/${t}`).set({username:name,password:pwd});
+          });
+        }
+        slotDiv.appendChild(btn);
+      }else{
+        slotDiv.innerHTML+=" <span>已過期</span>";
       }
-
-      // 已安排勾選
-      if(s.name){
-        const doneCheckbox = document.createElement("input");
-        doneCheckbox.type = "checkbox";
-        doneCheckbox.checked = s.done || false;
-        doneCheckbox.style.marginLeft = "10px";
-        doneCheckbox.onchange = async () => {
-          await db.ref("slots/"+id).update({done: doneCheckbox.checked});
-          loadSlots(date);
-        };
-        div.appendChild(doneCheckbox);
-
-        const label = document.createElement("span");
-        label.innerText = " 已安排";
-        div.appendChild(label);
-      }
-
-      // 顯示使用者密碼
-      if(s.password){
-        const pwdSpan = document.createElement("span");
-        pwdSpan.innerText = ` 密碼: ${s.password}`;
-        pwdSpan.style.marginLeft = "8px";
-        pwdSpan.style.color = "#555";
-        div.appendChild(pwdSpan);
-      }
-    }
-
-    // 顯示使用者已安排
-    if(s.name && s.done){
-      const doneSpan = document.createElement("span");
-      doneSpan.innerText = " ✅ 已安排";
-      doneSpan.style.marginLeft = "8px";
-      div.appendChild(doneSpan);
-    }
-
-    area.appendChild(div);
+      timeslotsDiv.appendChild(slotDiv);
+    });
   });
 }
 
-// 刷新按鈕
-document.getElementById("refresh").onclick = ()=>loadDates();
+// 監聽時段更新
+db.ref("timeslots").on("value", renderTimeslots);
 
-// 建立時段（管理員）
-if(isAdmin){
-  document.getElementById("make").onclick = async () => {
-    const d = document.getElementById("day").value;
-    const s = parseInt(document.getElementById("start").value);
-    const e = parseInt(document.getElementById("end").value);
-    if(!d || isNaN(s) || isNaN(e)) return alert("請填完整");
-    const updates = {};
-    for(let h=s; h<e; h++){
-      updates[`slots/${d}_${h}`] = {date:d, hour:h, name:"", done:false, password:""};
-    }
-    await db.ref().update(updates);
-    alert("✅ 已建立時段！");
-    loadDates();
-  };
-
-  // 刪除整天時段
-  const delAllBtn = document.createElement("button");
-  delAllBtn.innerText = "刪除此日期的所有時段";
-  delAllBtn.style.marginLeft = "10px";
-  delAllBtn.style.padding = "6px";
-  delAllBtn.style.borderRadius = "6px";
-  delAllBtn.style.background = "#ffcccc";
-  delAllBtn.style.border = "none";
-  delAllBtn.style.cursor = "pointer";
-  document.getElementById("admin").appendChild(delAllBtn);
-
-  delAllBtn.onclick = async () => {
-    const d = document.getElementById("day").value;
-    if(!d) return alert("請先選擇日期");
-    if(!confirm(`確定要刪除 ${d} 的所有時段嗎？`)) return;
-    const snap = await db.ref("slots").orderByChild("date").equalTo(d).once("value");
-    const data = snap.val() || {};
-    const updates = {};
-    Object.keys(data).forEach(id => { updates[`slots/${id}`] = null; });
-    await db.ref().update(updates);
-    alert(`🗑️ 已刪除 ${d} 的所有時段`);
-    loadDates();
-  };
-
-const announcementDiv = document.getElementById("announcement");
-
-// 讀取公告文字並顯示
-db.ref("announcement").on("value", snapshot => {
-  const text = snapshot.val() || "歡迎使用排班表";
-  announcementDiv.innerText = text;
-});
-
-// 如果是管理員，允許編輯公告
-if (isAdmin) {
-  announcementDiv.style.cursor = "pointer";
-  announcementDiv.title = "點擊編輯公告";
-
-  announcementDiv.onclick = async () => {
-    const newText = prompt("請輸入新的公告文字：", announcementDiv.innerText);
-    if (newText !== null) {
-      await db.ref("announcement").set(newText); // 存到 Firebase
-      // 這裡不用再改 innerText，因為上面的 on('value') 會自動更新
-    }
-  };
-}
-// 讀取公告文字
-db.ref("announcement").on("value", snap => {
-  const val = snap.val() || "歡迎使用排班表，公告文字";
-  announcementDiv.innerText = val;
-});
-
-
-}
-
-loadDates();
+// 初始渲染
+renderTimeslots();
 </script>
 </body>
 </html>
