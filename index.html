@@ -271,20 +271,25 @@ if(isAdmin){
 
 const announcementDiv = document.getElementById("announcement");
 
-// 如果是管理員，點擊公告可以編輯
-if(isAdmin){
+// 讀取公告文字並顯示
+db.ref("announcement").on("value", snapshot => {
+  const text = snapshot.val() || "歡迎使用排班表";
+  announcementDiv.innerText = text;
+});
+
+// 如果是管理員，允許編輯公告
+if (isAdmin) {
   announcementDiv.style.cursor = "pointer";
   announcementDiv.title = "點擊編輯公告";
 
   announcementDiv.onclick = async () => {
     const newText = prompt("請輸入新的公告文字：", announcementDiv.innerText);
-    if(newText !== null){
-      await db.ref("announcement").set(newText);
-      announcementDiv.innerText = newText;
+    if (newText !== null) {
+      await db.ref("announcement").set(newText); // 存到 Firebase
+      // 這裡不用再改 innerText，因為上面的 on('value') 會自動更新
     }
   };
 }
-
 // 讀取公告文字
 db.ref("announcement").on("value", snap => {
   const val = snap.val() || "歡迎使用排班表，公告文字";
