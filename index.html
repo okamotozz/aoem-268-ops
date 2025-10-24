@@ -1,25 +1,38 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>268官職排程表</title>
-  <style>
-    body { font-family:"Microsoft JhengHei", sans-serif; background:#f6f6fa; padding:20px; }
-    .wrap { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.1); }
-    .slot { background:#f0f3ff; border-radius:8px; padding:10px; margin:4px 0; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-    .slot.taken { background:#ffe5e5; color:#555; }
-    .date-title { font-weight:bold; margin-top:20px; background:#e8e8ff; padding:6px; border-radius:6px; }
-    .admin-btn { background:#ffcccc; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; margin-left:4px; }
-    .danger-btn { background:#ff7777; color:white; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; margin-top:10px; }
-    .done-span { margin-left:8px; font-weight:bold; }
-    input,button,select,textarea { padding:8px; margin:4px; }
-    .pwd-span { margin-left:8px; color:#555; font-style:italic; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>268官職排程表</title>
+<style>
+body { font-family:"Microsoft JhengHei", sans-serif; background:#f6f6fa; padding:20px; position:relative; }
+.wrap { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.1); position:relative; }
+.slot { background:#f0f3ff; border-radius:8px; padding:10px; margin:4px 0; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+.slot.taken { background:#ffe5e5; color:#555; }
+.date-title { font-weight:bold; margin-top:20px; background:#e8e8ff; padding:6px; border-radius:6px; }
+.admin-btn { background:#ffcccc; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; margin-left:4px; }
+.danger-btn { background:#ff7777; color:white; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; margin-top:10px; }
+.done-span { margin-left:8px; font-weight:bold; }
+input,button,select,textarea { padding:8px; margin:4px; }
+.pwd-span { margin-left:8px; color:#555; font-style:italic; }
+
+#adminLoginBtn { position:absolute; top:20px; right:20px; background:#ffcc80; border:none; border-radius:8px; padding:6px 12px; cursor:pointer; font-size:14px; }
+#adminLoginInputs { position:absolute; top:50px; right:20px; background:#fff; padding:10px; border-radius:8px; box-shadow:0 3px 10px rgba(0,0,0,0.2); display:none; }
+
+#admin { margin-top:20px; background:#fff6e0; padding:10px; border-radius:8px; display:none; }
+</style>
 </head>
 <body>
 <div class="wrap">
   <h2>268官職排程表</h2>
+
+  <!-- 管理者登入按鈕 -->
+  <button id="adminLoginBtn">管理者登入</button>
+  <div id="adminLoginInputs">
+    <input id="adminUser" placeholder="帳號">
+    <input id="adminPass" type="password" placeholder="密碼">
+    <button id="adminSubmitBtn">登入</button>
+  </div>
 
   <!-- 公告 -->
   <div id="announcementArea" style="margin:20px 0; padding:10px; background:#fff3e0; border-radius:8px;">
@@ -49,13 +62,22 @@
   <!-- 顯示所有時段 -->
   <div id="slots"></div>
 
-  <!-- 管理員 -->
-  <div id="admin" style="margin-top:20px; background:#fff6e0; padding:10px; border-radius:8px; display:none;">
+  <!-- 管理員專區 -->
+  <div id="admin">
     <h3>管理員專區</h3>
     <input id="day" type="date">
     <input id="start" type="number" placeholder="開始小時 (0-23)">
     <input id="end" type="number" placeholder="結束小時 (1-24)">
-    <input id="scheduleName" placeholder="輸入官職名稱">
+
+    <!-- 官職下拉選單 + 自訂輸入 -->
+    <select id="scheduleSelectAdmin">
+      <option value="大祭司（建造加速）">大祭司（建造加速）</option>
+      <option value="賢者（研究加速）">賢者（研究加速）</option>
+      <option value="戰術大師（爆兵）">戰術大師（爆兵）</option>
+      <option value="其他">其他</option>
+    </select>
+    <input id="scheduleOtherInput" placeholder="請輸入其他官職名稱" style="display:none;">
+
     <button id="make">建立時段</button>
     <br><br>
     <label>選擇官職刪除整個班表：</label>
@@ -70,6 +92,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", async () => {
@@ -84,30 +107,86 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  const params = new URLSearchParams(location.search);
-  const isAdmin = params.get("admin") === "268admin";
-  if (isAdmin) document.getElementById("admin").style.display = "block";
+  let isAdmin = false;
+  const ADMIN_HASH = "5eae3c96460e5cf99a1b52a9aa12156e5b6190e44566a7e69ce79195d01db7c0";
 
   const announcementRef = db.ref("announcement");
+
   async function loadAnnouncement() {
     const snap = await announcementRef.get();
     const text = snap.val() || "目前沒有公告";
     document.getElementById("announcementText").innerText = text;
-    if (isAdmin) {
-      document.getElementById("announcementAdmin").style.display = "block";
-      document.getElementById("announcementInput").value = text;
-    }
+    document.getElementById("announcementAdmin").style.display = isAdmin ? "block" : "none";
+    if(isAdmin) document.getElementById("announcementInput").value = text;
   }
   loadAnnouncement();
-  if (isAdmin){
-    document.getElementById("saveAnnouncement").onclick = async ()=> {
-      const text = document.getElementById("announcementInput").value.trim();
-      await announcementRef.set(text);
-      alert("✅ 公告已更新！");
-      loadAnnouncement();
-    };
+
+  document.getElementById("saveAnnouncement").onclick = async ()=> {
+    const text = document.getElementById("announcementInput").value.trim();
+    await announcementRef.set(text);
+    alert("✅ 公告已更新！");
+    loadAnnouncement();
+  };
+
+  // ===== 管理者登入按鈕 =====
+  const loginBtn = document.getElementById("adminLoginBtn");
+  const loginInputs = document.getElementById("adminLoginInputs");
+  const submitBtn = document.getElementById("adminSubmitBtn");
+
+  // 檢查 localStorage
+  if(localStorage.getItem("isAdmin") === "true"){
+    isAdmin = true;
+    document.getElementById("admin").style.display = "block";
+    loginBtn.innerText = "管理者登出";
+    loadSchedules();
+    loadAnnouncement();
   }
 
+  loginBtn.onclick = () => {
+    if(!isAdmin){
+      loginInputs.style.display = loginInputs.style.display === "none" ? "block" : "none";
+    } else {
+      // 登出
+      isAdmin = false;
+      localStorage.removeItem("isAdmin");
+      document.getElementById("admin").style.display = "none";
+      loginBtn.innerText = "管理者登入";
+      loadAnnouncement();
+      loadSchedules();
+    }
+  };
+
+  submitBtn.onclick = () => {
+    const user = document.getElementById("adminUser").value.trim();
+    const pass = document.getElementById("adminPass").value.trim();
+    if(!user || !pass) return alert("請輸入帳號與密碼");
+    const hash = CryptoJS.SHA256(user + ":" + pass).toString();
+    if(hash === ADMIN_HASH){
+      isAdmin = true;
+      localStorage.setItem("isAdmin","true"); // 記錄登入
+      alert("✅ 管理者登入成功！");
+      document.getElementById("admin").style.display = "block";
+      loginBtn.innerText = "管理者登出";
+      loginInputs.style.display = "none";
+      loadSchedules();
+      loadAnnouncement();
+    } else {
+      alert("❌ 帳號或密碼錯誤");
+    }
+  };
+
+  // ===== 管理員官職選單控制 =====
+  const scheduleSelectAdmin = document.getElementById("scheduleSelectAdmin");
+  const scheduleOtherInput = document.getElementById("scheduleOtherInput");
+  scheduleSelectAdmin.addEventListener("change", ()=>{
+    if(scheduleSelectAdmin.value === "其他"){
+      scheduleOtherInput.style.display = "inline-block";
+    } else {
+      scheduleOtherInput.style.display = "none";
+    }
+  });
+
+  // ===== 官職相關 =====
   const scheduleSelect = document.getElementById("scheduleSelect");
   const deleteScheduleSelect = document.getElementById("deleteScheduleSelect");
   let currentSchedule = "";
@@ -152,9 +231,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const dates = Object.keys(grouped).sort();
     if (dates.length === 0) { area.innerHTML="<p style='color:#888'>此官職尚無時段</p>"; return; }
 
-    // 取得台灣當前時間
     const now = new Date();
-    const nowTaiwan = new Date(now.getTime() + (now.getTimezoneOffset()*60000) + 8*3600*1000);
 
     dates.forEach(date => {
       const title = document.createElement("div");
@@ -186,9 +263,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           if(!user) return alert("請輸入名稱");
 
           if(!isAdmin){
-            // 建立台灣時間的時段結束時間
             const [y,m,d] = s.date.split("-").map(Number);
-            const slotEndTaiwan = new Date(Date.UTC(y, m-1, d, s.hour+1-8, 0,0)); // UTC+8轉UTC
+            const slotEndTaiwan = new Date(Date.UTC(y, m-1, d, s.hour+1-8, 0,0));
             if(slotEndTaiwan.getTime() <= now.getTime()) return alert("此時段已過，無法選擇");
           }
 
@@ -260,37 +336,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  if(isAdmin){
-    document.getElementById("make").onclick=async ()=>{
-      const day=document.getElementById("day").value;
-      const s=parseInt(document.getElementById("start").value);
-      const e=parseInt(document.getElementById("end").value);
-      const sched=document.getElementById("scheduleName").value.trim();
-      if(!sched) return alert("請輸入官職名稱");
-      if(!day||isNaN(s)||isNaN(e)) return alert("請填完整");
+  // ===== 管理員建立時段 =====
+  document.getElementById("make").onclick = async ()=>{
+    if(!isAdmin) return alert("❌ 請先登入管理者");
+    const day = document.getElementById("day").value;
+    const s = parseInt(document.getElementById("start").value);
+    const e = parseInt(document.getElementById("end").value);
 
-      const updates={};
-      for(let h=s; h<e; h++){
-        updates[`${day}_${h}`]={date:day,hour:h,name:"",done:false,password:""};
-      }
-      await db.ref(`slots_${sched}`).update(updates);
-      await db.ref(`schedules/${sched}`).set(true);
-      alert(`✅ 已建立 ${sched} 的時段`);
-      currentSchedule=sched;
-      loadSchedules();
-    };
+    let sched = scheduleSelectAdmin.value;
+    if(sched === "其他"){
+      sched = scheduleOtherInput.value.trim();
+      if(!sched) return alert("請輸入自訂官職名稱");
+    }
 
-    document.getElementById("deleteSchedule").onclick=async ()=>{
-      const delSched = deleteScheduleSelect.value;
-      if(!delSched) return alert("請先選擇官職");
-      if(!confirm(`⚠️ 確定刪除「${delSched}」官職的所有時段嗎？`)) return;
-      await db.ref(`slots_${delSched}`).remove();
-      await db.ref(`schedules/${delSched}`).remove();
-      alert(`✅ 已刪除「${delSched}」官職及其時段`);
-      currentSchedule="";
-      loadSchedules();
-    };
-  }
+    if(!day || isNaN(s) || isNaN(e)) return alert("請填完整");
+
+    const updates = {};
+    for(let h=s; h<e; h++){
+      updates[`${day}_${h}`]={date:day,hour:h,name:"",done:false,password:""};
+    }
+    await db.ref(`slots_${sched}`).update(updates);
+    await db.ref(`schedules/${sched}`).set(true);
+    alert(`✅ 已建立 ${sched} 的時段`);
+    currentSchedule = sched;
+    loadSchedules();
+  };
+
+  // ===== 刪除官職 =====
+  document.getElementById("deleteSchedule").onclick=async ()=>{
+    if(!isAdmin) return alert("❌ 請先登入管理者");
+    const delSched = deleteScheduleSelect.value;
+    if(!delSched) return alert("請先選擇官職");
+    if(!confirm(`⚠️ 確定刪除「${delSched}」官職的所有時段嗎？`)) return;
+    await db.ref(`slots_${delSched}`).remove();
+    await db.ref(`schedules/${delSched}`).remove();
+    alert(`✅ 已刪除「${delSched}」官職及其時段`);
+    currentSchedule="";
+    loadSchedules();
+  };
 
   document.getElementById("refresh").onclick=()=>loadSlotsAll();
   loadSchedules();
