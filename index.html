@@ -7,50 +7,60 @@
   <style>
     body { font-family:"Microsoft JhengHei", sans-serif; background:#f6f6fa; padding:20px; }
     .wrap { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.1); }
-    .slot { background:#f0f3ff; border-radius:8px; padding:10px; margin:6px; display:flex; justify-content: space-between; align-items:center; cursor:pointer; }
-    .slot.taken { background:#ffe5e5; color:#666; }
-    input,button,select,textarea { padding:8px; margin:4px; }
+    .slot { background:#f0f3ff; border-radius:8px; padding:10px; margin:4px 0; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+    .slot.taken { background:#ffe5e5; color:#555; }
+    .date-title { font-weight:bold; margin-top:20px; background:#e8e8ff; padding:6px; border-radius:6px; }
     .admin-btn { background:#ffcccc; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; margin-left:4px; }
+    .danger-btn { background:#ff7777; color:white; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; margin-top:10px; }
+    .done-span { margin-left:8px; font-weight:bold; }
+    input,button,select,textarea { padding:8px; margin:4px; }
+    .pwd-span { margin-left:8px; color:#555; font-style:italic; }
   </style>
 </head>
 <body>
 <div class="wrap">
   <h2>268官職排程表</h2>
 
-  <!-- 公告區 -->
+  <!-- 公告 -->
   <div id="announcementArea" style="margin:20px 0; padding:10px; background:#fff3e0; border-radius:8px;">
     <h3>公告</h3>
     <div id="announcementText" style="white-space:pre-wrap; color:#333;">載入中...</div>
-
-    <!-- 管理員編輯公告 -->
     <div id="announcementAdmin" style="margin-top:10px; display:none;">
       <textarea id="announcementInput" rows="3" style="width:100%; padding:6px;"></textarea>
       <button id="saveAnnouncement" style="margin-top:6px; padding:6px 12px; border-radius:6px; background:#ffcc80; border:none; cursor:pointer;">儲存公告</button>
     </div>
   </div>
 
-  <!-- 使用者輸入名字與密碼 -->
+  <!-- 使用者 -->
   <div>
     <input id="name" placeholder="請輸入你的遊戲名稱">
   </div>
   <div>
-    <input id="password" placeholder="可選擇設定密碼保護此時段" type="password">
+    <input id="password" placeholder="密碼選填" type="password">
   </div>
   <button id="refresh">確認遊戲名稱</button>
 
-  <!-- 選擇日期 -->
-  <select id="dateSelect"></select>
+  <!-- 官職選擇 -->
+  <div style="margin-top:10px;">
+    <label>選擇需要的官職：</label>
+    <select id="scheduleSelect"></select>
+  </div>
 
-  <!-- 時段列表 -->
+  <!-- 顯示所有時段 -->
   <div id="slots"></div>
 
-  <!-- 管理員區 -->
-  <div id="admin" style="margin-top:20px; background:#fff6e0; padding:10px; border-radius:8px;">
+  <!-- 管理員 -->
+  <div id="admin" style="margin-top:20px; background:#fff6e0; padding:10px; border-radius:8px; display:none;">
     <h3>管理員專區</h3>
     <input id="day" type="date">
     <input id="start" type="number" placeholder="開始小時 (0-23)">
     <input id="end" type="number" placeholder="結束小時 (1-24)">
+    <input id="scheduleName" placeholder="輸入官職名稱">
     <button id="make">建立時段</button>
+    <br><br>
+    <label>選擇官職刪除整個班表：</label>
+    <select id="deleteScheduleSelect"></select>
+    <button id="deleteSchedule" class="danger-btn">🗑️ 刪除整個官職</button>
   </div>
 </div>
 
@@ -62,218 +72,224 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-/************ 在這裡貼你的 Firebase 設定 ************/
-const firebaseConfig = {
-  apiKey: "AIzaSyBqUOjnXN-bp7OXJoQevS9-c0pnZxRU_B0",
-  authDomain: "test-d07d4.firebaseapp.com",
-  databaseURL: "https://test-d07d4-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "test-d07d4",
-  storageBucket: "test-d07d4.firebasestorage.app",
-  messagingSenderId: "442419315645",
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+document.addEventListener("DOMContentLoaded", async () => {
+  const firebaseConfig = {
+    apiKey: "AIzaSyBqUOjnXN-bp7OXJoQevS9-c0pnZxRU_B0",
+    authDomain: "test-d07d4.firebaseapp.com",
+    databaseURL: "https://test-d07d4-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "test-d07d4",
+    storageBucket: "test-d07d4.firebasestorage.app",
+    messagingSenderId: "442419315645"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-// 管理員 ID
-const params = new URLSearchParams(location.search);
-const isAdmin = params.get("admin") === "268admin"; // 可改成你自己的管理員 ID
-document.getElementById("admin").style.display = isAdmin ? "block" : "none";
+  const params = new URLSearchParams(location.search);
+  const isAdmin = params.get("admin") === "268admin";
+  if (isAdmin) document.getElementById("admin").style.display = "block";
 
-// 公告區
-const announcementRef = db.ref("announcement");
+  // 公告
+  const announcementRef = db.ref("announcement");
+  async function loadAnnouncement() {
+    const snap = await announcementRef.get();
+    const text = snap.val() || "目前沒有公告";
+    document.getElementById("announcementText").innerText = text;
+    if (isAdmin) {
+      document.getElementById("announcementAdmin").style.display = "block";
+      document.getElementById("announcementInput").value = text;
+    }
+  }
+  loadAnnouncement();
+  if (isAdmin){
+    document.getElementById("saveAnnouncement").onclick = async ()=>{
+      const text = document.getElementById("announcementInput").value.trim();
+      await announcementRef.set(text);
+      alert("✅ 公告已更新！");
+      loadAnnouncement();
+    };
+  }
 
-// 顯示公告
-async function loadAnnouncement() {
-  const snap = await announcementRef.once("value");
-  const text = snap.val() || "目前沒有公告";
-  document.getElementById("announcementText").innerText = text;
+  // 官職（班表）
+  const scheduleSelect = document.getElementById("scheduleSelect");
+  const deleteScheduleSelect = document.getElementById("deleteScheduleSelect");
+  let currentSchedule = "";
+
+  async function loadSchedules() {
+    const snap = await db.ref("schedules").get();
+    const data = snap.val() || {};
+    const names = Object.keys(data).filter(n => n !== "A");
+    if (names.length === 0) {
+      scheduleSelect.innerHTML = `<option value="">尚未建立任何官職</option>`;
+      deleteScheduleSelect.innerHTML = `<option value="">尚未建立任何官職</option>`;
+      currentSchedule = "";
+      document.getElementById("slots").innerHTML = "";
+      return;
+    }
+    scheduleSelect.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join("");
+    deleteScheduleSelect.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join("");
+    if (!currentSchedule || !names.includes(currentSchedule)) currentSchedule = names[0];
+    scheduleSelect.value = currentSchedule;
+    loadSlotsAll();
+  }
+
+  scheduleSelect.addEventListener("change", () => {
+    currentSchedule = scheduleSelect.value;
+    loadSlotsAll();
+  });
+
+  async function loadSlotsAll() {
+    if (!currentSchedule) return;
+    const snap = await db.ref(`slots_${currentSchedule}`).once("value");
+    const data = snap.val() || {};
+    const area = document.getElementById("slots");
+    area.innerHTML = "";
+
+    const grouped = {};
+    Object.keys(data).forEach(id => {
+      const s = data[id];
+      if (!grouped[s.date]) grouped[s.date] = [];
+      grouped[s.date].push({...s, id});
+    });
+
+    const dates = Object.keys(grouped).sort();
+    if (dates.length === 0) { area.innerHTML="<p style='color:#888'>此官職尚無時段</p>"; return; }
+
+    dates.forEach(date => {
+      const title = document.createElement("div");
+      title.className = "date-title";
+      title.innerText = date;
+      area.appendChild(title);
+
+      grouped[date].sort((a,b)=>a.hour-b.hour).forEach(s=>{
+        const div=document.createElement("div");
+        div.className="slot"+(s.name?" taken":"");
+
+        const span=document.createElement("span");
+        let text = `${s.hour}:00-${s.hour+1}:00 `;
+        text += s.name ? `→ ${s.name}`:"(空)";
+        span.innerText = text;
+        div.appendChild(span);
+
+        // 使用者端只顯示已安排
+        if(s.done && !isAdmin){
+          const statusSpan=document.createElement("span");
+          statusSpan.style.marginLeft="8px";
+          statusSpan.style.color="green";
+          statusSpan.innerText=" ✅ 已安排";
+          div.appendChild(statusSpan);
+        }
+
+        // 使用者點擊預約
+        span.onclick=async ()=>{
+          const user=document.getElementById("name").value.trim();
+          const pwd=document.getElementById("password").value.trim();
+          if(!user) return alert("請輸入名稱");
+
+          if(!isAdmin){
+            if(s.name){
+              if(user!==s.name) return alert("此時段已被其他使用者登記，無法修改");
+              if(s.password && pwd!==s.password) return alert("密碼錯誤，無法修改自己的時段");
+            }
+          }
+
+          let updates = {};
+          if(s.name===user){ updates={name:"",password:""}; }
+          else{ updates={name:user,password:pwd}; }
+
+          await db.ref(`slots_${currentSchedule}/${s.id}`).update(updates);
+          loadSlotsAll();
+        };
+
+        // 管理員功能
+        if(isAdmin){
+          const delBtn=document.createElement("button");
+          delBtn.className="admin-btn";
+          delBtn.innerText="刪除時段";
+          delBtn.onclick=async e=>{
+            e.stopPropagation();
+            await db.ref(`slots_${currentSchedule}/${s.id}`).remove();
+            loadSlotsAll();
+          };
+          div.appendChild(delBtn);
+
+          if(s.name){
+            const editBtn=document.createElement("button");
+            editBtn.className="admin-btn";
+            editBtn.innerText="編輯名字";
+            editBtn.onclick=async e=>{
+              e.stopPropagation();
+              const newName=prompt("修改名字（清空請留空）",s.name);
+              if(newName!==null){
+                const updates={name:newName.trim()};
+                if(newName.trim()==="") updates.password="";
+                await db.ref(`slots_${currentSchedule}/${s.id}`).update(updates);
+                loadSlotsAll();
+              }
+            };
+            div.appendChild(editBtn);
+
+            // 顯示密碼
+            const pwdSpan=document.createElement("span");
+            pwdSpan.className="pwd-span";
+            pwdSpan.innerText = `密碼: ${s.password||"(空)"}`;
+            div.appendChild(pwdSpan);
+
+            const chk=document.createElement("input");
+            chk.type="checkbox";
+            chk.checked=s.done||false;
+            chk.onchange=async ()=>{
+              await db.ref(`slots_${currentSchedule}/${s.id}`).update({done:chk.checked});
+              loadSlotsAll();
+            };
+            div.appendChild(chk);
+
+            const lbl=document.createElement("span");
+            lbl.style.marginLeft="8px";
+            lbl.innerText = chk.checked ? "✅ 已安排" : "未安排";
+            div.appendChild(lbl);
+          }
+        }
+
+        area.appendChild(div);
+      });
+    });
+  }
 
   if(isAdmin){
-    document.getElementById("announcementAdmin").style.display = "block";
-    document.getElementById("announcementInput").value = text;
-  }
-}
+    document.getElementById("make").onclick=async ()=>{
+      const day=document.getElementById("day").value;
+      const s=parseInt(document.getElementById("start").value);
+      const e=parseInt(document.getElementById("end").value);
+      const sched=document.getElementById("scheduleName").value.trim();
+      if(!sched) return alert("請輸入官職名稱");
+      if(!day||isNaN(s)||isNaN(e)) return alert("請填完整");
 
-if(isAdmin){
-  document.getElementById("saveAnnouncement").onclick = async () => {
-    const text = document.getElementById("announcementInput").value.trim();
-    await announcementRef.set(text);
-    alert("✅ 公告已更新！");
-    loadAnnouncement();
-  };
-}
-
-// 日期與時段
-async function loadDates(){
-  const snap = await db.ref("slots").once("value");
-  const data = snap.val()||{};
-  const dates = [...new Set(Object.values(data).map(d=>d.date))];
-  const sel = document.getElementById("dateSelect");
-  sel.innerHTML = dates.map(d=>`<option>${d}</option>`).join("");
-  if (dates[0]) loadSlots(dates[0]);
-  sel.onchange = ()=>loadSlots(sel.value);
-}
-
-async function loadSlots(date){
-  const nameInput = document.getElementById("name").value.trim();
-  const pwdInput = document.getElementById("password").value.trim();
-  const snap = await db.ref("slots").orderByChild("date").equalTo(date).once("value");
-  const data = snap.val()||{};
-  const area = document.getElementById("slots");
-  area.innerHTML = "";
-
-  Object.keys(data).sort((a,b)=>data[a].hour-data[b].hour).forEach(id=>{
-    const s = data[id];
-    const div = document.createElement("div");
-    div.className = "slot"+(s.name?" taken":"");
-
-    // 時段文字
-    const span = document.createElement("span");
-    span.innerText = `${s.hour}:00-${s.hour+1}:00 ` + (s.name?`→ ${s.name}`:"(空)");
-    div.appendChild(span);
-
-    // 使用者點選預約
-    span.onclick = async () => {
-      const name = document.getElementById("name").value.trim();
-      const pwdInput = document.getElementById("password").value.trim();
-      if(!name) return alert("請先輸入遊戲名稱");
-      if(s.done) return alert("此時段已被管理員標記為已安排，無法更改");
-      const now = new Date();
-      const slotDate = new Date(s.date);
-      slotDate.setHours(s.hour,0,0,0);
-      if(now >= slotDate) return alert("此時段已過，無法選擇");
-
-      if(s.name){
-        if(s.name !== name){
-          if(s.password){
-            if(pwdInput !== s.password) return alert("密碼錯誤，無法修改他人的時段");
-          } else return alert("此時段已被其他使用者登記，無法修改");
-        } else {
-          if(s.password && pwdInput !== s.password){
-            return alert("密碼錯誤，無法修改自己的時段");
-          }
-        }
+      const updates={};
+      for(let h=s; h<e; h++){
+        updates[`${day}_${h}`]={date:day,hour:h,name:"",done:false,password:""};
       }
-
-      let updates = {};
-      if(s.name === name){ 
-        updates = {name: "", password: ""};
-      } else {
-        updates = {name: name, password: pwdInput};
-      }
-      await db.ref("slots/"+id).update(updates);
-      loadSlots(date);
+      await db.ref(`slots_${sched}`).update(updates);
+      await db.ref(`schedules/${sched}`).set(true);
+      alert(`✅ 已建立 ${sched} 的時段`);
+      currentSchedule=sched;
+      loadSchedules();
     };
 
-    // 管理員功能
-    if(isAdmin){
-      const delBtn = document.createElement("button");
-      delBtn.className = "admin-btn";
-      delBtn.innerText = "刪除時段";
-      delBtn.onclick = async (e)=>{
-        e.stopPropagation();
-        if(!confirm(`確定刪除 ${s.hour}:00-${s.hour+1}:00 的時段嗎？`)) return;
-        await db.ref("slots/"+id).remove();
-        loadSlots(date);
-      };
-      div.appendChild(delBtn);
+    document.getElementById("deleteSchedule").onclick=async ()=>{
+      const delSched = deleteScheduleSelect.value;
+      if(!delSched) return alert("請先選擇官職");
+      if(!confirm(`⚠️ 確定刪除「${delSched}」官職的所有時段嗎？`)) return;
+      await db.ref(`slots_${delSched}`).remove();
+      await db.ref(`schedules/${delSched}`).remove();
+      alert(`✅ 已刪除「${delSched}」官職及其時段`);
+      currentSchedule="";
+      loadSchedules();
+    };
+  }
 
-      if(s.name){
-        const editBtn = document.createElement("button");
-        editBtn.className = "admin-btn";
-        editBtn.innerText = "編輯名字";
-        editBtn.onclick = async (e)=>{
-          e.stopPropagation();
-          const newName = prompt("修改名字（清空請留空）", s.name);
-          if(newName !== null){
-            const updates = {name: newName.trim()};
-            if(newName.trim() === "") updates.password = "";
-            await db.ref("slots/"+id).update(updates);
-            loadSlots(date);
-          }
-        };
-        div.appendChild(editBtn);
-
-        const doneCheckbox = document.createElement("input");
-        doneCheckbox.type = "checkbox";
-        doneCheckbox.checked = s.done || false;
-        doneCheckbox.style.marginLeft = "10px";
-        doneCheckbox.onchange = async () => {
-          await db.ref("slots/"+id).update({done: doneCheckbox.checked});
-          loadSlots(date);
-        };
-        div.appendChild(doneCheckbox);
-
-        const label = document.createElement("span");
-        label.innerText = " 已安排";
-        div.appendChild(label);
-
-        if(s.password){
-          const pwdSpan = document.createElement("span");
-          pwdSpan.innerText = ` 密碼: ${s.password}`;
-          pwdSpan.style.marginLeft = "8px";
-          pwdSpan.style.color = "#555";
-          div.appendChild(pwdSpan);
-        }
-      }
-    }
-
-    if(s.name && s.done){
-      const doneSpan = document.createElement("span");
-      doneSpan.innerText = " ✅ 已安排";
-      doneSpan.style.marginLeft = "8px";
-      div.appendChild(doneSpan);
-    }
-
-    area.appendChild(div);
-  });
-}
-
-// 刷新按鈕
-document.getElementById("refresh").onclick = ()=>loadDates();
-
-// 建立時段（管理員）
-if(isAdmin){
-  document.getElementById("make").onclick = async () => {
-    const d = document.getElementById("day").value;
-    const s = parseInt(document.getElementById("start").value);
-    const e = parseInt(document.getElementById("end").value);
-    if(!d || isNaN(s) || isNaN(e)) return alert("請填完整");
-    const updates = {};
-    for(let h=s; h<e; h++){
-      updates[`slots/${d}_${h}`] = {date:d, hour:h, name:"", done:false, password:""};
-    }
-    await db.ref().update(updates);
-    alert("✅ 已建立時段！");
-    loadDates();
-  };
-
-  const delAllBtn = document.createElement("button");
-  delAllBtn.innerText = "刪除此日期的所有時段";
-  delAllBtn.style.marginLeft = "10px";
-  delAllBtn.style.padding = "6px";
-  delAllBtn.style.borderRadius = "6px";
-  delAllBtn.style.background = "#ffcccc";
-  delAllBtn.style.border = "none";
-  delAllBtn.style.cursor = "pointer";
-  document.getElementById("admin").appendChild(delAllBtn);
-
-  delAllBtn.onclick = async () => {
-    const d = document.getElementById("day").value;
-    if(!d) return alert("請先選擇日期");
-    if(!confirm(`確定要刪除 ${d} 的所有時段嗎？`)) return;
-    const snap = await db.ref("slots").orderByChild("date").equalTo(d).once("value");
-    const data = snap.val() || {};
-    const updates = {};
-    Object.keys(data).forEach(id => { updates[`slots/${id}`] = null; });
-    await db.ref().update(updates);
-    alert(`🗑️ 已刪除 ${d} 的所有時段`);
-    loadDates();
-  };
-}
-
-loadDates();
-loadAnnouncement();
+  document.getElementById("refresh").onclick=()=>loadSlotsAll();
+  loadSchedules();
+});
 </script>
 </body>
 </html>
