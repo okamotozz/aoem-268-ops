@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function loadAnnouncement() {
     const snap = await announcementRef.get();
     const text = snap.val() || "目前沒有公告";
-    document.getElementById("announcementText").innerText = text;
+    document.getElementById("announcementText").innerHTML = text;
     document.getElementById("announcementAdmin").style.display = isAdmin ? "block" : "none";
     if(isAdmin) document.getElementById("announcementInput").value = text;
   }
@@ -381,3 +381,4 @@ document.addEventListener("DOMContentLoaded", async () => {
 </script>
 </body>
 </html>
+
