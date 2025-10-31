@@ -44,15 +44,6 @@ input,button,select,textarea { padding:8px; margin:4px; }
     </div>
   </div>
 
-  <!-- 使用者 -->
-  <div>
-    <input id="name" placeholder="請輸入你的遊戲名稱">
-  </div>
-  <div>
-    <input id="password" placeholder="密碼選填" type="password">
-  </div>
-  <button id="refresh">確認遊戲名稱</button>
-
   <!-- 官職選擇 -->
   <div style="margin-top:10px;">
     <label>選擇需要的官職：</label>
@@ -133,7 +124,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const loginInputs = document.getElementById("adminLoginInputs");
   const submitBtn = document.getElementById("adminSubmitBtn");
 
-  // 檢查 localStorage
   if(localStorage.getItem("isAdmin") === "true"){
     isAdmin = true;
     document.getElementById("admin").style.display = "block";
@@ -146,7 +136,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if(!isAdmin){
       loginInputs.style.display = loginInputs.style.display === "none" ? "block" : "none";
     } else {
-      // 登出
       isAdmin = false;
       localStorage.removeItem("isAdmin");
       document.getElementById("admin").style.display = "none";
@@ -163,7 +152,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const hash = CryptoJS.SHA256(user + ":" + pass).toString();
     if(hash === ADMIN_HASH){
       isAdmin = true;
-      localStorage.setItem("isAdmin","true"); // 記錄登入
+      localStorage.setItem("isAdmin","true");
       alert("✅ 管理者登入成功！");
       document.getElementById("admin").style.display = "block";
       loginBtn.innerText = "管理者登出";
@@ -175,18 +164,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   };
 
-  // ===== 管理員官職選單控制 =====
   const scheduleSelectAdmin = document.getElementById("scheduleSelectAdmin");
   const scheduleOtherInput = document.getElementById("scheduleOtherInput");
   scheduleSelectAdmin.addEventListener("change", ()=>{
-    if(scheduleSelectAdmin.value === "其他"){
-      scheduleOtherInput.style.display = "inline-block";
-    } else {
-      scheduleOtherInput.style.display = "none";
-    }
+    scheduleOtherInput.style.display = scheduleSelectAdmin.value === "其他" ? "inline-block" : "none";
   });
 
-  // ===== 官職相關 =====
   const scheduleSelect = document.getElementById("scheduleSelect");
   const deleteScheduleSelect = document.getElementById("deleteScheduleSelect");
   let currentSchedule = "";
@@ -257,32 +240,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           div.appendChild(statusSpan);
         }
 
-        span.onclick = async () => {
-          const user = document.getElementById("name").value.trim();
-          const pwd = document.getElementById("password").value.trim();
-          if(!user) return alert("請輸入名稱");
-
-          if(!isAdmin){
-            const [y,m,d] = s.date.split("-").map(Number);
-            const slotEndTaiwan = new Date(Date.UTC(y, m-1, d, s.hour+1-8, 0,0));
-            if(slotEndTaiwan.getTime() <= now.getTime()) return alert("此時段已過，無法選擇");
-          }
-
-          if(!isAdmin){
-            if(s.name){
-              if(user!==s.name) return alert("此時段已被其他使用者登記，無法修改");
-              if(s.password && pwd!==s.password) return alert("密碼錯誤，無法修改自己的時段");
-            }
-          }
-
-          let updates = {};
-          if(s.name===user){ updates={name:"",password:"",done:false}; }
-          else{ updates={name:user,password:pwd}; }
-
-          await db.ref(`slots_${currentSchedule}/${s.id}`).update(updates);
-          loadSlotsAll();
-        };
-
         if(isAdmin){
           const delBtn=document.createElement("button");
           delBtn.className="admin-btn";
@@ -336,7 +293,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // ===== 管理員建立時段 =====
   document.getElementById("make").onclick = async ()=>{
     if(!isAdmin) return alert("❌ 請先登入管理者");
     const day = document.getElementById("day").value;
@@ -362,7 +318,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadSchedules();
   };
 
-  // ===== 刪除官職 =====
   document.getElementById("deleteSchedule").onclick=async ()=>{
     if(!isAdmin) return alert("❌ 請先登入管理者");
     const delSched = deleteScheduleSelect.value;
@@ -375,10 +330,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadSchedules();
   };
 
-  document.getElementById("refresh").onclick=()=>loadSlotsAll();
   loadSchedules();
 });
 </script>
 </body>
 </html>
-
